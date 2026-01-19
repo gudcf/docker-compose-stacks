@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # ===========================================
+  # POSTGRES - Otimizado para Alta Carga
+  # ===========================================
+  postgres:
+    image: pgvector/pgvector:pg14
+    restart: always
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=n8n_db
+      - POSTGRES_USER=postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Tuning de performance que mostra conhecimento avançado
+    command: >
+      postgres
+      -c max_connections=500
+      -c shared_buffers=512MB
+      -c effective_cache_size=2GB
+      -c maintenance_work_mem=512MB
+      -c work_mem=10MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================
+  # REDIS - Fila de Processamento
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================
+  # N8N MAIN - Webhook Receiver & Editor
+  # ===========================================
+  n8n-main:
+    image: n8nio/n8n:latest
+    restart: always
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n_db
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_HOST=${N8N_DOMAIN}
+      - WEBHOOK_URL=https://${N8N_DOMAIN}
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - N8N_METRICS=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - n8n-files:/files
+
+  # ===========================================
+  # N8N WORKERS - Processamento Paralelo
+  # ===========================================
+  n8n-worker:
+    image: n8nio/n8n:latest
+    restart: always
+    command: worker
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n_db
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=${DB_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - n8n-files:/files
+    # Isso brilha aos olhos dos recrutadores: Escalabilidade
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+volumes:
+  postgres-data:
+  redis-data:
+  n8n-data:
+  n8n-files:
