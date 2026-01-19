@@ -1,0 +1,16 @@
+# --- ARQUIVOS DE CREDENCIAIS (CRÍTICO) ---
+.env
+.env.prod
+.env.dev
+*.env
+config.json
+secrets.json
+creds.json
+
+# --- SISTEMA ---
+.DS_Store
+Thumbs.db
+
+# --- LOGS ---
+*.log
+npm-debug.log*
