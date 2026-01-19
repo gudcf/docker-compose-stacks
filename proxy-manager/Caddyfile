@@ -1,0 +1,21 @@
+{
+    email admin@exemplo.com
+}
+
+# Configuração Genérica para Proxy Reverso
+{$APP_DOMAIN} {
+    encode gzip zstd
+    
+    # Headers de Segurança
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        -Server
+    }
+
+    reverse_proxy nginx:80 {
+        health_uri /health
+        health_interval 30s
+    }
+}
